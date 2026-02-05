@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="m-0">Calendar (Week)</h1>
+    <div class="text-muted">
+      Week of {{ week_start.strftime("%d/%m/%Y") }} → {{ week_end_display.strftime("%d/%m/%Y") }}
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('calendar_week', day=prev_week_day) }}">◀ Prev week</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('calendar_week') }}">This week</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('calendar_week', day=next_week_day) }}">Next week ▶</a>
+    <a class="btn btn-primary" href="{{ url_for('appointment_new') }}">New Appointment</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for d in days %}
+    <div class="col-lg-4 col-md-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <strong>{{ d.strftime("%A") }}</strong>
+            <div class="text-muted small">{{ d.strftime("%d/%m/%Y") }}</div>
+          </div>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendar_day', day=d.isoformat()) }}">Day</a>
+        </div>
+
+        <div class="card-body">
+          {% if by_day.get(d) %}
+            <ul class="list-group list-group-flush">
+              {% for a in by_day.get(d) %}
+                <li class="list-group-item">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                      <div class="fw-semibold">
+                        {{ a.start_at.strftime("%H:%M") }}{% if a.end_at %}–{{ a.end_at.strftime("%H:%M") }}{% endif %}
+                      </div>
+                      <div>{{ a.client.full_name }}</div>
+                      <div class="text-muted small">
+                        Services: {{ a.services_summary() if a.items else "-" }}<br>
+                        Total: {{ a.total_due()|money }} • {{ "PAID" if a.is_paid else "UNPAID" }}
+                      </div>
+                    </div>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('appointment_billing', appt_id=a.id) }}">Billing</a>
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">No appointments.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

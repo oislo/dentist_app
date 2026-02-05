@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="m-0">Clients</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('export_clients') }}">Export CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('client_new') }}">Add Client</a>
+  </div>
+</div>
+
+<form class="row g-2 mb-3">
+  <div class="col-md-6">
+    <input class="form-control" name="q" placeholder="Search by name..." value="{{ q }}">
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-outline-secondary w-100">Search</button>
+  </div>
+</form>
+
+<div class="card"><div class="card-body">
+  {% if clients %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr><th>Name</th><th>Phone</th><th>Email</th><th class="text-end">Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for c in clients %}
+            <tr>
+              <td><a href="{{ url_for('client_detail', client_id=c.id) }}">{{ c.full_name }}</a></td>
+              <td>{{ c.phone or "" }}</td>
+              <td>{{ c.email or "" }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('client_edit', client_id=c.id) }}">Edit</a>
+                <form method="post" action="{{ url_for('client_delete', client_id=c.id) }}" class="d-inline" onsubmit="return confirm('Delete this client?');">
+                  <button class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="text-muted">No clients found.</div>
+  {% endif %}
+</div></div>
+{% endblock %}

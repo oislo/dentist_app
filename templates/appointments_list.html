@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="m-0">Appointments</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('calendar_week') }}">Calendar</a>
+    <a class="btn btn-primary" href="{{ url_for('appointment_new') }}">New Appointment</a>
+  </div>
+</div>
+
+<form class="row g-2 mb-3">
+  <div class="col-md-3">
+    <select class="form-select" name="status">
+      <option value="" {% if not status %}selected{% endif %}>All Status</option>
+      <option value="scheduled" {% if status == "scheduled" %}selected{% endif %}>Scheduled</option>
+      <option value="completed" {% if status == "completed" %}selected{% endif %}>Completed</option>
+      <option value="canceled" {% if status == "canceled" %}selected{% endif %}>Canceled</option>
+      <option value="no_show" {% if status == "no_show" %}selected{% endif %}>No-show</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <select class="form-select" name="paid">
+      <option value="" {% if not paid %}selected{% endif %}>All Paid</option>
+      <option value="no" {% if paid == "no" %}selected{% endif %}>Unpaid</option>
+      <option value="yes" {% if paid == "yes" %}selected{% endif %}>Paid</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-outline-secondary w-100">Filter</button>
+  </div>
+</form>
+
+<div class="card"><div class="card-body">
+  {% if appts %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr><th>Client</th><th>Start</th><th>Status</th><th>Services</th><th>Total</th><th>Paid</th><th class="text-end">Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for a in appts %}
+            <tr>
+              <td><a href="{{ url_for('client_detail', client_id=a.client.id) }}">{{ a.client.full_name }}</a></td>
+              <td>{{ a.start_at.strftime("%d/%m/%Y %H:%M") }}</td>
+              <td>{{ a.status }}</td>
+              <td class="text-muted small">{{ a.services_summary() if a.items else "-" }}</td>
+              <td>{{ a.total_due()|money }}</td>
+              <td>{{ "Yes" if a.is_paid else "No" }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('appointment_billing', appt_id=a.id) }}">Billing</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('appointment_edit', appt_id=a.id) }}">Edit</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('export_appointment_invoice', appt_id=a.id) }}">Invoice CSV</a>
+                <form method="post" action="{{ url_for('appointment_delete', appt_id=a.id) }}" class="d-inline" onsubmit="return confirm('Delete this appointment?');">
+                  <button class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="text-muted">No appointments.</div>
+  {% endif %}
+</div></div>
+{% endblock %}

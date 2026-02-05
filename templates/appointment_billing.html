@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="m-0">Appointment Billing</h1>
+    <div class="text-muted">
+      {{ appt.client.full_name }} • {{ appt.start_at.strftime("%d/%m/%Y %H:%M") }} • Status: {{ appt.status }}
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('appointment_edit', appt_id=appt.id) }}">Edit Appointment</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('export_appointment_invoice', appt_id=appt.id) }}">Invoice CSV</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('appointments_list') }}">Back</a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h4 class="mb-3">Billing</h4>
+        <form method="post">
+          <input type="hidden" name="form_name" value="billing">
+          {{ billing_form.csrf_token }}
+
+          <div class="row">
+            <div class="col-md-6 mb-3">{{ billing_form.discount_type.label }} {{ billing_form.discount_type(class="form-select") }}</div>
+            <div class="col-md-6 mb-3">{{ billing_form.discount_value.label }} {{ billing_form.discount_value(class="form-control") }}</div>
+          </div>
+
+          <div class="form-check mb-3">
+            {{ billing_form.is_paid(class="form-check-input") }}
+            {{ billing_form.is_paid.label(class="form-check-label") }}
+          </div>
+
+          <button class="btn btn-primary">{{ billing_form.submit.label.text }}</button>
+        </form>
+
+        <hr>
+        <div class="d-flex justify-content-between"><span>Subtotal</span><strong>{{ appt.subtotal()|money }}</strong></div>
+        <div class="d-flex justify-content-between"><span>Discount</span><strong>-{{ appt.discount_amount()|money }}</strong></div>
+        <div class="d-flex justify-content-between fs-5 mt-2"><span>Total Due</span><strong>{{ appt.total_due()|money }}</strong></div>
+        <div class="mt-2"><span class="badge bg-{{ 'success' if appt.is_paid else 'warning' }}">{{ 'PAID' if appt.is_paid else 'UNPAID' }}</span></div>
+      </div>
+    </div>
+
+    <div class="card mt-4">
+      <div class="card-body">
+        <h4 class="mb-3">Add Service</h4>
+        <form method="post">
+          <input type="hidden" name="form_name" value="item">
+          {{ item_form.csrf_token }}
+
+          <div class="mb-3">{{ item_form.service_id.label }} {{ item_form.service_id(class="form-select") }}</div>
+          <div class="row">
+            <div class="col-md-4 mb-3">{{ item_form.quantity.label }} {{ item_form.quantity(class="form-control") }}</div>
+            <div class="col-md-8 mb-3">{{ item_form.unit_price.label }} {{ item_form.unit_price(class="form-control") }}</div>
+          </div>
+
+          <button class="btn btn-primary">{{ item_form.submit.label.text }}</button>
+        </form>
+
+        <div class="form-text mt-2">Tip: unit price defaults to the service default price (you can overwrite it).</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <h4 class="mb-3">Services for this Appointment</h4>
+        {% if appt.items %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr><th>Service</th><th class="text-end">Qty</th><th class="text-end">Unit</th><th class="text-end">Total</th><th class="text-end">Actions</th></tr>
+              </thead>
+              <tbody>
+                {% for it in appt.items %}
+                  <tr>
+                    <td>{{ it.service.name }}</td>
+                    <td class="text-end">{{ it.quantity }}</td>
+                    <td class="text-end">{{ it.unit_price|money }}</td>
+                    <td class="text-end">{{ it.total_price()|money }}</td>
+                    <td class="text-end">
+                      <form method="post" action="{{ url_for('appointment_item_delete', appt_id=appt.id, item_id=it.id) }}" class="d-inline" onsubmit="return confirm('Remove this item?');">
+                        <button class="btn btn-sm btn-outline-danger">Remove</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-muted">No services added yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

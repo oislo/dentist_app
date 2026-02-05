@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="m-0">{{ client.full_name }}</h1>
+    <div class="text-muted">
+      {% if client.date_of_birth %}
+        DOB: {{ client.date_of_birth.strftime("%d/%m/%Y") }} •
+      {% endif %}
+      {{ client.phone or "" }} {{ "•" if client.phone and client.email else "" }} {{ client.email or "" }}
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('export_client_history', client_id=client.id) }}">Export History CSV</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('client_edit', client_id=client.id) }}">Edit</a>
+    <a class="btn btn-primary" href="{{ url_for('appointment_new') }}">New Appointment</a>
+  </div>
+</div>
+
+<h3>Appointments (latest)</h3>
+<div class="card"><div class="card-body">
+  {% if appts %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr><th>Start</th><th>Status</th><th>Services</th><th>Total</th><th>Paid</th><th class="text-end">Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for a in appts %}
+            <tr>
+              <td>{{ a.start_at.strftime("%d/%m/%Y %H:%M") }}</td>
+              <td>{{ a.status }}</td>
+              <td class="text-muted small">{{ a.services_summary() if a.items else "-" }}</td>
+              <td>{{ a.total_due()|money }}</td>
+              <td>{{ "Yes" if a.is_paid else "No" }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('appointment_billing', appt_id=a.id) }}">Billing</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('appointment_edit', appt_id=a.id) }}">Edit</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="text-muted">No appointments.</div>
+  {% endif %}
+</div></div>
+
+{% if client.notes %}
+<div class="mt-4">
+  <h3>Notes</h3>
+  <div class="card"><div class="card-body">{{ client.notes }}</div></div>
+</div>
+{% endif %}
+{% endblock %}

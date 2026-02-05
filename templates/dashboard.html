@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="m-0">Dashboard</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('calendar_week') }}">Calendar</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('export_clients') }}">Export Clients CSV</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4"><div class="card"><div class="card-body">
+    <div class="h5">Clients</div><div class="display-6">{{ clients_count }}</div>
+  </div></div></div>
+  <div class="col-md-4"><div class="card"><div class="card-body">
+    <div class="h5">Appointments</div><div class="display-6">{{ appt_count }}</div>
+  </div></div></div>
+  <div class="col-md-4"><div class="card"><div class="card-body">
+    <div class="h5">Unpaid Appointments</div><div class="display-6">{{ unpaid_count }}</div>
+  </div></div></div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="m-0">Upcoming Appointments</h3>
+      <a class="btn btn-sm btn-primary" href="{{ url_for('appointment_new') }}">New</a>
+    </div>
+    <div class="card"><div class="card-body">
+      {% if upcoming %}
+        <ul class="list-group list-group-flush">
+          {% for a in upcoming %}
+            <li class="list-group-item d-flex justify-content-between">
+              <div>
+                <div class="fw-semibold">{{ a.client.full_name }}</div>
+                <div class="text-muted small">
+                  {{ a.start_at.strftime("%d/%m/%Y %H:%M") }}
+                  • Services: {{ a.services_summary() if a.items else "-" }}
+                </div>
+              </div>
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('appointment_billing', appt_id=a.id) }}">Billing</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-muted">No upcoming scheduled appointments.</div>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="m-0">Latest Unpaid Appointments</h3>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('appointments_list', paid='no') }}">View all</a>
+    </div>
+    <div class="card"><div class="card-body">
+      {% if unpaid %}
+        <ul class="list-group list-group-flush">
+          {% for a in unpaid %}
+            <li class="list-group-item d-flex justify-content-between">
+              <div>
+                <div class="fw-semibold">{{ a.client.full_name }}</div>
+                <div class="text-muted small">
+                  {{ a.start_at.strftime("%d/%m/%Y %H:%M") }} — Total: {{ a.total_due()|money }}
+                </div>
+              </div>
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('appointment_billing', appt_id=a.id) }}">Billing</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-muted">No unpaid appointments.</div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}
