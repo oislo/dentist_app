@@ -54,14 +54,17 @@ class Appointment(db.Model):
     def discount_amount(self) -> float:
         subtotal = self.subtotal()
         if self.discount_type == "percent":
-            return max(0.0, subtotal * (float(self.discount_value) / 100.0))
-        return max(0.0, float(self.discount_value))
+            amount = subtotal * (float(self.discount_value) / 100.0)
+        else:
+            amount = float(self.discount_value)
+        # A discount can never be negative or larger than the subtotal.
+        return min(subtotal, max(0.0, amount))
 
     def total_due(self) -> float:
         return max(0.0, self.subtotal() - self.discount_amount())
 
     def services_summary(self) -> str:
-        return ", ".join([f"{it.service.name} x{it.quantity}" for it in self.items])
+        return ", ".join([f"{it.service_name} x{it.quantity}" for it in self.items])
 
 class AppointmentItem(db.Model):
     __tablename__ = "appointment_items"
@@ -74,6 +77,11 @@ class AppointmentItem(db.Model):
 
     quantity = db.Column(db.Integer, nullable=False, default=1)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+
+    @property
+    def service_name(self) -> str:
+        # Older databases can hold items whose service was deleted.
+        return self.service.name if self.service else "(deleted service)"
 
     def total_price(self) -> float:
         return float(self.quantity) * float(self.unit_price)
