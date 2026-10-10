@@ -1,23 +1,101 @@
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 import csv
+import hmac
+import os
+import secrets
 from io import StringIO
+from urllib.parse import urlsplit
 
-from flask import Flask, render_template, redirect, url_for, flash, request, abort, Response
+from flask import Flask, render_template, redirect, url_for, flash, request, abort, Response, session
 from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from sqlalchemy.orm import joinedload
 
 from config import Config
 from models import db, Client, Service, Appointment, AppointmentItem
-from forms import ClientForm, ServiceForm, AppointmentForm, AppointmentBillingForm, AppointmentItemForm
+from forms import ClientForm, ServiceForm, AppointmentForm, AppointmentBillingForm, AppointmentItemForm, LoginForm
+
+csrf = CSRFProtect()
+
+
+def load_or_create_secret_key(instance_path: str) -> str:
+    """Return a persistent random secret key stored in instance/secret_key."""
+    os.makedirs(instance_path, exist_ok=True)
+    path = os.path.join(instance_path, "secret_key")
+    try:
+        with open(path, encoding="utf-8") as f:
+            key = f.read().strip()
+        if key:
+            return key
+    except FileNotFoundError:
+        pass
+    key = secrets.token_hex(32)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(key)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return key
 
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    if not app.config["SECRET_KEY"]:
+        app.config["SECRET_KEY"] = load_or_create_secret_key(app.instance_path)
 
     db.init_app(app)
     Migrate(app, db)
+    csrf.init_app(app)  # every POST needs a CSRF token, including the delete buttons
+
+    # -----------------------
+    # Login (single shared password from APP_PASSWORD)
+    # -----------------------
+    @app.before_request
+    def require_login():
+        if request.endpoint in ("login", "static") or session.get("authed"):
+            return None
+        nxt = None
+        if request.method == "GET" and request.endpoint:
+            nxt = request.full_path if request.query_string else request.path
+        return redirect(url_for("login", next=nxt))
+
+    def safe_next(target: str | None) -> str:
+        # Only follow redirects that stay on this site.
+        if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
+            return target
+        return url_for("dashboard")
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if session.get("authed"):
+            return redirect(url_for("dashboard"))
+        form = LoginForm()
+        expected = app.config.get("APP_PASSWORD")
+        if expected and form.validate_on_submit():
+            if hmac.compare_digest(form.password.data.encode("utf-8"), expected.encode("utf-8")):
+                session.clear()
+                session["authed"] = True
+                return redirect(safe_next(request.args.get("next")))
+            form.password.errors.append("Wrong password.")
+        return render_template("login.html", form=form, configured=bool(expected), title="Log in")
+
+    @app.post("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        flash("The form expired or was not valid. Please try again.", "warning")
+        # Go back to the page the form was on, if it was one of ours.
+        ref = urlsplit(request.referrer or "")
+        target = None
+        if ref.netloc == request.host:
+            target = ref.path + (f"?{ref.query}" if ref.query else "")
+        return redirect(safe_next(target))
 
     # -----------------------
     # Helpers
@@ -82,7 +160,7 @@ def create_app():
     @app.get("/")
     def dashboard():
         upcoming = Appointment.query.options(joinedload(Appointment.items).joinedload(AppointmentItem.service)).filter(
-            Appointment.start_at >= datetime.utcnow(),
+            Appointment.start_at >= datetime.now(),  # appointments are stored in local time
             Appointment.status == "scheduled",
         ).order_by(Appointment.start_at.asc()).limit(8).all()
 
@@ -194,7 +272,7 @@ def create_app():
                 for it in a.items:
                     rows.append([
                         a.id, a.start_at, a.end_at or "", a.status, "paid" if a.is_paid else "unpaid",
-                        it.service.name, it.quantity, float(it.unit_price), float(it.total_price()),
+                        it.service_name, it.quantity, float(it.unit_price), float(it.total_price()),
                         a.discount_type, float(a.discount_value), float(a.total_due()),
                         a.reason or "", a.notes or ""
                     ])
@@ -215,7 +293,7 @@ def create_app():
     @app.get("/export/appointment/<int:appt_id>/invoice.csv")
     def export_appointment_invoice(appt_id: int):
         a = Appointment.query.options(joinedload(Appointment.items).joinedload(AppointmentItem.service)).get_or_404(appt_id)
-        rows = [[it.service.name, it.quantity, float(it.unit_price), float(it.total_price())] for it in a.items]
+        rows = [[it.service_name, it.quantity, float(it.unit_price), float(it.total_price())] for it in a.items]
         rows += [
             [],
             ["SUBTOTAL", "", "", float(a.subtotal())],
@@ -280,6 +358,9 @@ def create_app():
     @app.post("/clients/<int:client_id>/delete")
     def client_delete(client_id: int):
         client = Client.query.get_or_404(client_id)
+        if Appointment.query.filter_by(client_id=client.id).count():
+            flash("This client has appointments, so it cannot be deleted. Delete the appointments first.", "warning")
+            return redirect(url_for("client_detail", client_id=client.id))
         db.session.delete(client)
         db.session.commit()
         flash("Client deleted.", "warning")
@@ -288,6 +369,14 @@ def create_app():
     # -----------------------
     # Services
     # -----------------------
+    def service_name_taken(name: str, exclude_id: int | None = None) -> bool:
+        q = Service.query.filter(Service.name == name)
+        if exclude_id is not None:
+            q = q.filter(Service.id != exclude_id)
+        return q.first() is not None
+
+    DUPLICATE_SERVICE_MSG = "A service with this name already exists."
+
     @app.get("/services")
     def services_list():
         services = Service.query.order_by(Service.name.asc()).all()
@@ -297,15 +386,19 @@ def create_app():
     def service_new():
         form = ServiceForm()
         if form.validate_on_submit():
-            s = Service(
-                name=form.name.data.strip(),
-                default_price=form.default_price.data,
-                is_active=bool(form.is_active.data),
-            )
-            db.session.add(s)
-            db.session.commit()
-            flash("Service created.", "success")
-            return redirect(url_for("services_list"))
+            name = form.name.data.strip()
+            if service_name_taken(name):
+                form.name.errors.append(DUPLICATE_SERVICE_MSG)
+            else:
+                s = Service(
+                    name=name,
+                    default_price=form.default_price.data,
+                    is_active=bool(form.is_active.data),
+                )
+                db.session.add(s)
+                db.session.commit()
+                flash("Service created.", "success")
+                return redirect(url_for("services_list"))
         return render_template("service_form.html", form=form, title="New Service")
 
     @app.route("/services/<int:service_id>/edit", methods=["GET","POST"])
@@ -313,17 +406,24 @@ def create_app():
         s = Service.query.get_or_404(service_id)
         form = ServiceForm(obj=s)
         if form.validate_on_submit():
-            s.name = form.name.data.strip()
-            s.default_price = form.default_price.data
-            s.is_active = bool(form.is_active.data)
-            db.session.commit()
-            flash("Service updated.", "success")
-            return redirect(url_for("services_list"))
+            name = form.name.data.strip()
+            if service_name_taken(name, exclude_id=s.id):
+                form.name.errors.append(DUPLICATE_SERVICE_MSG)
+            else:
+                s.name = name
+                s.default_price = form.default_price.data
+                s.is_active = bool(form.is_active.data)
+                db.session.commit()
+                flash("Service updated.", "success")
+                return redirect(url_for("services_list"))
         return render_template("service_form.html", form=form, title="Edit Service")
 
     @app.post("/services/<int:service_id>/delete")
     def service_delete(service_id: int):
         s = Service.query.get_or_404(service_id)
+        if AppointmentItem.query.filter_by(service_id=s.id).count():
+            flash("This service is used by appointments, so it cannot be deleted. Edit it and untick Active instead.", "warning")
+            return redirect(url_for("services_list"))
         db.session.delete(s)
         db.session.commit()
         flash("Service deleted.", "warning")
@@ -357,11 +457,10 @@ def create_app():
             form.service_ids.data = []
 
         if form.validate_on_submit():
-            if form.client_id.data == 0:
-                flash("Please select a client.", "warning")
-                return render_template("appointment_form.html", form=form, title="New Appointment")
-
-            conflict = find_conflict(None, form.start_at.data, form.end_at.data)
+            # A canceled appointment does not occupy its slot.
+            conflict = None
+            if form.status.data != "canceled":
+                conflict = find_conflict(None, form.start_at.data, form.end_at.data)
             if conflict:
                 flash(f"Conflict: overlaps with {conflict.start_at} ({conflict.client.full_name}).", "warning")
                 return render_template("appointment_form.html", form=form, title="New Appointment")
@@ -410,11 +509,9 @@ def create_app():
             form.service_ids.data = []
 
         if form.validate_on_submit():
-            if form.client_id.data == 0:
-                flash("Please select a client.", "warning")
-                return render_template("appointment_form.html", form=form, title="Edit Appointment", appt=appt)
-
-            conflict = find_conflict(appt.id, form.start_at.data, form.end_at.data)
+            conflict = None
+            if form.status.data != "canceled":
+                conflict = find_conflict(appt.id, form.start_at.data, form.end_at.data)
             if conflict:
                 flash(f"Conflict: overlaps with {conflict.start_at} ({conflict.client.full_name}).", "warning")
                 return render_template("appointment_form.html", form=form, title="Edit Appointment", appt=appt)
@@ -482,12 +579,15 @@ def create_app():
             if billing_form.validate_on_submit():
                 appt.discount_type = billing_form.discount_type.data
                 appt.discount_value = billing_form.discount_value.data or Decimal("0")
+                was_paid = appt.is_paid
                 appt.is_paid = bool(billing_form.is_paid.data)
-                appt.paid_at = datetime.utcnow() if appt.is_paid else None
+                if not appt.is_paid:
+                    appt.paid_at = None
+                elif not was_paid or appt.paid_at is None:
+                    appt.paid_at = datetime.utcnow()  # keep the original date on later edits
                 db.session.commit()
                 flash("Billing updated.", "success")
                 return redirect(url_for("appointment_billing", appt_id=appt.id))
-            flash(f"Billing error: {billing_form.errors}", "warning")
 
         if request.method == "POST" and form_name == "item":
             if item_form.validate_on_submit():
@@ -502,9 +602,16 @@ def create_app():
                 db.session.commit()
                 flash("Service added.", "success")
                 return redirect(url_for("appointment_billing", appt_id=appt.id))
-            flash(f"Add service error: {item_form.errors}", "warning")
 
-        return render_template("appointment_billing.html", appt=appt, billing_form=billing_form, item_form=item_form)
+        service_ids = [sid for sid, _ in item_form.service_id.choices]
+        service_prices = {
+            s.id: f"{s.default_price:.2f}"
+            for s in (Service.query.filter(Service.id.in_(service_ids)).all() if service_ids else [])
+        }
+        return render_template(
+            "appointment_billing.html",
+            appt=appt, billing_form=billing_form, item_form=item_form, service_prices=service_prices,
+        )
 
     @app.post("/appointments/<int:appt_id>/items/<int:item_id>/delete")
     def appointment_item_delete(appt_id: int, item_id: int):

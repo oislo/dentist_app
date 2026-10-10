@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_forms.html" import form_errors %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5 col-lg-4">
+    <h1 class="mb-3">Log in</h1>
+    <div class="card"><div class="card-body">
+      {% if not configured %}
+        <div class="alert alert-warning mb-0" role="alert">
+          No password is configured. Set the <code>APP_PASSWORD</code> environment variable and restart the app.
+        </div>
+      {% else %}
+        <form method="post">
+          {{ form.csrf_token }}
+          {{ form_errors(form) }}
+          <div class="mb-3">{{ form.password.label }} {{ form.password(class="form-control", autofocus=True) }}</div>
+          <button class="btn btn-primary">{{ form.submit.label.text }}</button>
+        </form>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

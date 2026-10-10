@@ -19,6 +19,7 @@
               <td class="text-end">
                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('service_edit', service_id=s.id) }}">Edit</a>
                 <form method="post" action="{{ url_for('service_delete', service_id=s.id) }}" class="d-inline" onsubmit="return confirm('Delete this service?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-sm btn-outline-danger">Delete</button>
                 </form>
               </td>

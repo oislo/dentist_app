@@ -51,6 +51,7 @@
                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('appointment_edit', appt_id=a.id) }}">Edit</a>
                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('export_appointment_invoice', appt_id=a.id) }}">Invoice CSV</a>
                 <form method="post" action="{{ url_for('appointment_delete', appt_id=a.id) }}" class="d-inline" onsubmit="return confirm('Delete this appointment?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-sm btn-outline-danger">Delete</button>
                 </form>
               </td>
