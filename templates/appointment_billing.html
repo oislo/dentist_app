@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_forms.html" import form_errors %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
@@ -22,6 +23,7 @@
         <form method="post">
           <input type="hidden" name="form_name" value="billing">
           {{ billing_form.csrf_token }}
+          {{ form_errors(billing_form) }}
 
           <div class="row">
             <div class="col-md-6 mb-3">{{ billing_form.discount_type.label }} {{ billing_form.discount_type(class="form-select") }}</div>
@@ -50,6 +52,7 @@
         <form method="post">
           <input type="hidden" name="form_name" value="item">
           {{ item_form.csrf_token }}
+          {{ form_errors(item_form) }}
 
           <div class="mb-3">{{ item_form.service_id.label }} {{ item_form.service_id(class="form-select") }}</div>
           <div class="row">
@@ -60,7 +63,7 @@
           <button class="btn btn-primary">{{ item_form.submit.label.text }}</button>
         </form>
 
-        <div class="form-text mt-2">Tip: unit price defaults to the service default price (you can overwrite it).</div>
+        <div class="form-text mt-2">Tip: unit price follows the selected service's default price (you can overwrite it).</div>
       </div>
     </div>
   </div>
@@ -78,12 +81,13 @@
               <tbody>
                 {% for it in appt.items %}
                   <tr>
-                    <td>{{ it.service.name }}</td>
+                    <td>{{ it.service_name }}</td>
                     <td class="text-end">{{ it.quantity }}</td>
                     <td class="text-end">{{ it.unit_price|money }}</td>
                     <td class="text-end">{{ it.total_price()|money }}</td>
                     <td class="text-end">
                       <form method="post" action="{{ url_for('appointment_item_delete', appt_id=appt.id, item_id=it.id) }}" class="d-inline" onsubmit="return confirm('Remove this item?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-sm btn-outline-danger">Remove</button>
                       </form>
                     </td>
@@ -99,4 +103,17 @@
     </div>
   </div>
 </div>
+
+<script>
+  // Keep the unit price in sync with the selected service's default price.
+  (function () {
+    const prices = {{ service_prices|tojson }};
+    const select = document.getElementById("item-service_id");
+    const price = document.getElementById("item-unit_price");
+    if (!select || !price) return;
+    select.addEventListener("change", function () {
+      if (prices[select.value] !== undefined) price.value = prices[select.value];
+    });
+  })();
+</script>
 {% endblock %}
